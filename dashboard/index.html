@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SkyGuard AI | Live Monitor</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">SG</span><div><strong>SkyGuard AI</strong><span>Atmospheric anomaly monitor</span></div></div>
+      <div class="top-actions"><span class="live-dot"></span><span id="connection">Connecting</span><button id="refresh" type="button">Refresh data</button></div>
+    </header>
+    <section class="intro"><div><p class="eyebrow">LIVE SENSOR NETWORK / 05 CITIES</p><h1>Weather conditions,<br><em>kept in view.</em></h1></div><div class="updated">Last observation<strong id="updated">--</strong></div></section>
+    <section class="summary-grid" aria-label="Network summary">
+      <article class="metric"><span>Stations reporting</span><strong id="station-count">--</strong><small>Across the active network</small></article>
+      <article class="metric"><span>Active anomalies</span><strong id="anomaly-count" class="alert-text">--</strong><small>Ensemble decision: 3+ models</small></article>
+      <article class="metric"><span>Network health</span><strong id="health">--</strong><small id="health-note">Awaiting live data</small></article>
+      <article class="metric"><span>Highest agreement</span><strong id="agreement">--</strong><small>Models in agreement</small></article>
+    </section>
+    <section class="content-grid">
+      <article class="panel chart-panel"><div class="panel-head"><div><p class="eyebrow">SELECTED STATION</p><h2 id="selected-city">Chennai</h2></div><select id="city-select" aria-label="Select station"></select></div><div class="chart-legend"><span><i class="swatch temp"></i>Temperature (C)</span><span><i class="swatch humidity"></i>Humidity (%)</span></div><div class="chart-wrap"><svg id="trend-chart" viewBox="0 0 720 290" role="img" aria-label="Selected station weather trend"></svg></div></article>
+      <article class="panel"><div class="panel-head"><div><p class="eyebrow">STATION STATUS</p><h2>City overview</h2></div><span class="count-pill" id="status-count">--</span></div><div id="city-list" class="city-list"></div></article>
+    </section>
+    <section class="panel incidents"><div class="panel-head"><div><p class="eyebrow">MODEL OUTPUT</p><h2>Latest observations</h2></div><span class="table-note">Ensemble anomaly score</span></div><div class="table-scroll"><table><thead><tr><th>Station</th><th>Observed</th><th>Temperature</th><th>Humidity</th><th>Pressure</th><th>Agreement</th><th>Severity</th><th>Reason</th></tr></thead><tbody id="observations"></tbody></table></div></section>
+    <p id="error" class="error" role="alert"></p>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

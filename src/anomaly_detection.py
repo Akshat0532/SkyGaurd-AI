@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import numpy as np
 import joblib
@@ -40,11 +41,6 @@ MODEL_FEATURES = [
 # ============================================================
 
 def normalize_scores(scores):
-    """
-    Convert anomaly scores to the range 0-1.
-
-    Higher value = more anomalous.
-    """
 
     scores = np.asarray(scores)
 
@@ -54,41 +50,51 @@ def normalize_scores(scores):
     if max_score - min_score < 1e-12:
         return np.zeros_like(scores)
 
-    return (scores - min_score) / (
-        max_score - min_score
+    return (
+        (scores - min_score)
+        / (max_score - min_score)
     )
 
 
 # ============================================================
-# MAIN ANOMALY DETECTION PIPELINE
+# TRAIN MODELS
 # ============================================================
 
-def run_anomaly_pipeline(
+def train_models(
     df,
     contamination=0.02
 ):
 
-    df = df.copy()
+    print("\n")
+    print("=" * 60)
+    print("TRAINING SKYGUARD AI MODELS")
+    print("=" * 60)
 
-    # --------------------------------------------------------
-    # Make sure data is sorted
-    # --------------------------------------------------------
+    df = df.copy()
 
     df = df.sort_values(
         ["DateTime", "Location"]
     ).reset_index(drop=True)
 
     # --------------------------------------------------------
-    # Prepare model input
-    # --------------------------------------------------------
-    #
-    # IMPORTANT:
-    # This is ONE UNIVERSAL MODEL.
-    #
-    # Location is NOT included in X.
+    # Check required columns
     # --------------------------------------------------------
 
+    missing = [
+        col
+        for col in MODEL_FEATURES
+        if col not in df.columns
+    ]
+
+    if missing:
+        raise ValueError(
+            f"Missing model features: {missing}"
+        )
+
     X = df[MODEL_FEATURES].copy()
+
+    print(f"\nTraining observations: {len(X):,}")
+    print(f"Training features: {len(MODEL_FEATURES)}")
 
     # --------------------------------------------------------
     # Scaling
@@ -102,6 +108,8 @@ def run_anomaly_pipeline(
     # 1. ISOLATION FOREST
     # ========================================================
 
+    print("\nTraining Isolation Forest...")
+
     iforest = IsolationForest(
         n_estimators=300,
         contamination=contamination,
@@ -111,22 +119,11 @@ def run_anomaly_pipeline(
 
     iforest.fit(X_scaled)
 
-    df["IF_Anomaly"] = (
-        iforest.predict(X_scaled) == -1
-    ).astype(int)
-
-    # Higher = more anomalous
-    df["IF_Score_Raw"] = (
-        -iforest.decision_function(X_scaled)
-    )
-
-    df["IF_Score"] = normalize_scores(
-        df["IF_Score_Raw"]
-    )
-
     # ========================================================
     # 2. ECOD
     # ========================================================
+
+    print("Training ECOD...")
 
     ecod = ECOD(
         contamination=contamination
@@ -134,17 +131,11 @@ def run_anomaly_pipeline(
 
     ecod.fit(X_scaled)
 
-    df["ECOD_Anomaly"] = (
-        ecod.labels_
-    )
-
-    df["ECOD_Score"] = normalize_scores(
-        ecod.decision_scores_
-    )
-
     # ========================================================
     # 3. COPOD
     # ========================================================
+
+    print("Training COPOD...")
 
     copod = COPOD(
         contamination=contamination
@@ -152,17 +143,11 @@ def run_anomaly_pipeline(
 
     copod.fit(X_scaled)
 
-    df["COPOD_Anomaly"] = (
-        copod.labels_
-    )
-
-    df["COPOD_Score"] = normalize_scores(
-        copod.decision_scores_
-    )
-
     # ========================================================
     # 4. HBOS
     # ========================================================
+
+    print("Training HBOS...")
 
     hbos = HBOS(
         contamination=contamination
@@ -170,80 +155,11 @@ def run_anomaly_pipeline(
 
     hbos.fit(X_scaled)
 
-    df["HBOS_Anomaly"] = (
-        hbos.labels_
-    )
-
-    df["HBOS_Score"] = normalize_scores(
-        hbos.decision_scores_
-    )
-
     # ========================================================
-    # 5. MODEL AGREEMENT
+    # SAVE MODELS
     # ========================================================
 
-    df["Model_Agreement"] = (
-        df["IF_Anomaly"]
-        + df["ECOD_Anomaly"]
-        + df["COPOD_Anomaly"]
-        + df["HBOS_Anomaly"]
-    )
-
-    # ========================================================
-    # 6. ENSEMBLE ANOMALY SCORE
-    # ========================================================
-    #
-    # Average of normalized anomaly scores.
-    #
-    # 0 = normal
-    # 1 = highly anomalous relative to this dataset
-    # ========================================================
-
-    df["Ensemble_Score"] = (
-        df["IF_Score"]
-        + df["ECOD_Score"]
-        + df["COPOD_Score"]
-        + df["HBOS_Score"]
-    ) / 4
-
-    # ========================================================
-    # 7. ENSEMBLE DECISION
-    # ========================================================
-    #
-    # Primary high-confidence rule:
-    # at least 3 of 4 models must agree.
-    #
-    # This is a candidate anomaly, NOT ground truth.
-    # ========================================================
-
-    df["Ensemble_Anomaly"] = (
-        df["Model_Agreement"] >= 3
-    ).astype(int)
-
-    # ========================================================
-    # 8. ANOMALY SEVERITY
-    # ========================================================
-
-    df["Anomaly_Severity"] = pd.cut(
-        df["Ensemble_Score"],
-        bins=[
-            -np.inf,
-            0.50,
-            0.70,
-            0.85,
-            np.inf
-        ],
-        labels=[
-            "Normal",
-            "Low",
-            "Medium",
-            "High"
-        ]
-    )
-
-    # ========================================================
-    # 9. SAVE TRAINED COMPONENTS
-    # ========================================================
+    os.makedirs("models", exist_ok=True)
 
     joblib.dump(
         scaler,
@@ -270,9 +186,212 @@ def run_anomaly_pipeline(
         "models/hbos.pkl"
     )
 
+    print("\nModels successfully saved:")
+
+    print("  models/scaler.pkl")
+    print("  models/isolation_forest.pkl")
+    print("  models/ecod.pkl")
+    print("  models/copod.pkl")
+    print("  models/hbos.pkl")
+
+    print("\nTraining complete.")
+
+    return {
+        "scaler": scaler,
+        "iforest": iforest,
+        "ecod": ecod,
+        "copod": copod,
+        "hbos": hbos
+    }
+
+
+# ============================================================
+# LOAD SAVED MODELS
+# ============================================================
+
+def load_models():
+
+    required_files = [
+        "models/scaler.pkl",
+        "models/isolation_forest.pkl",
+        "models/ecod.pkl",
+        "models/copod.pkl",
+        "models/hbos.pkl"
+    ]
+
+    for file_path in required_files:
+
+        if not os.path.exists(file_path):
+
+            raise FileNotFoundError(
+                f"Required model file not found: {file_path}"
+            )
+
+    return {
+        "scaler": joblib.load(
+            "models/scaler.pkl"
+        ),
+
+        "iforest": joblib.load(
+            "models/isolation_forest.pkl"
+        ),
+
+        "ecod": joblib.load(
+            "models/ecod.pkl"
+        ),
+
+        "copod": joblib.load(
+            "models/copod.pkl"
+        ),
+
+        "hbos": joblib.load(
+            "models/hbos.pkl"
+        )
+    }
+
+
+# ============================================================
+# LIVE INFERENCE
+# ============================================================
+
+def run_live_inference(df):
+
+    df = df.copy()
+
+    if df.empty:
+        return df
+
+    df = df.sort_values(
+        ["DateTime", "Location"]
+    ).reset_index(drop=True)
+
+    # --------------------------------------------------------
+    # Check model features
+    # --------------------------------------------------------
+
+    missing = [
+        col
+        for col in MODEL_FEATURES
+        if col not in df.columns
+    ]
+
+    if missing:
+
+        raise ValueError(
+            f"Missing model features: {missing}"
+        )
+
+    # --------------------------------------------------------
+    # Load trained models
+    # --------------------------------------------------------
+
+    models = load_models()
+
+    scaler = models["scaler"]
+    iforest = models["iforest"]
+    ecod = models["ecod"]
+    copod = models["copod"]
+    hbos = models["hbos"]
+
+    # --------------------------------------------------------
+    # Prepare X
+    # --------------------------------------------------------
+
+    X = df[MODEL_FEATURES].copy()
+
+    X_scaled = scaler.transform(X)
+
     # ========================================================
-    # 10. FINAL SORT
+    # ISOLATION FOREST
     # ========================================================
+
+    df["IF_Anomaly"] = (
+        iforest.predict(X_scaled) == -1
+    ).astype(int)
+
+    df["IF_Score_Raw"] = (
+        -iforest.decision_function(X_scaled)
+    )
+
+    # ========================================================
+    # ECOD
+    # ========================================================
+
+    df["ECOD_Anomaly"] = (
+        ecod.predict(X_scaled)
+    ).astype(int)
+
+    df["ECOD_Score"] = (
+        ecod.decision_function(X_scaled)
+    )
+
+    # ========================================================
+    # COPOD
+    # ========================================================
+
+    df["COPOD_Anomaly"] = (
+        copod.predict(X_scaled)
+    ).astype(int)
+
+    df["COPOD_Score"] = (
+        copod.decision_function(X_scaled)
+    )
+
+    # ========================================================
+    # HBOS
+    # ========================================================
+
+    df["HBOS_Anomaly"] = (
+        hbos.predict(X_scaled)
+    ).astype(int)
+
+    df["HBOS_Score"] = (
+        hbos.decision_function(X_scaled)
+    )
+
+    # ========================================================
+    # MODEL AGREEMENT
+    # ========================================================
+
+    df["Model_Agreement"] = (
+        df["IF_Anomaly"]
+        + df["ECOD_Anomaly"]
+        + df["COPOD_Anomaly"]
+        + df["HBOS_Anomaly"]
+    )
+
+    # ========================================================
+    # ENSEMBLE DECISION
+    # ========================================================
+
+    df["Ensemble_Anomaly"] = (
+        df["Model_Agreement"] >= 3
+    ).astype(int)
+
+    # ========================================================
+    # SIMPLE LIVE SEVERITY
+    # ========================================================
+
+    df["Anomaly_Severity"] = "Normal"
+
+    df.loc[
+        df["Model_Agreement"] == 1,
+        "Anomaly_Severity"
+    ] = "Low"
+
+    df.loc[
+        df["Model_Agreement"] == 2,
+        "Anomaly_Severity"
+    ] = "Medium"
+
+    df.loc[
+        df["Model_Agreement"] >= 3,
+        "Anomaly_Severity"
+    ] = "High"
+
+    # --------------------------------------------------------
+    # Sort
+    # --------------------------------------------------------
 
     df = df.sort_values(
         ["DateTime", "Location"]

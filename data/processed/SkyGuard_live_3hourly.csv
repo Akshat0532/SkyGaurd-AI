@@ -1,0 +1,6 @@
+DateTime,Location,Temperature_C,Humidity_Percent,Pressure_hPa,Pressure_Missing
+2026-09-05 09:00:00,Chennai,32.2,62.0,1009.9,0
+2026-09-05 09:00:00,Hyderabad,29.6,54.0,956.5,0
+2026-09-05 09:00:00,Kolkata,31.5,75.0,1006.9,0
+2026-09-05 09:00:00,Mumbai,26.6,83.0,1012.7,0
+2026-09-05 09:00:00,New_Delhi,27.8,84.0,984.3,0
